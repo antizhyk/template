@@ -1,0 +1,89 @@
+version: "3.3"  #Версия Docker-compose
+
+volumes: 
+  db: #Декларируем волюм для БД
+#Вопрос про ФПМ в прикладном варианте для нас
+services: #Раздел для установки контейнеров
+  &db-service test-db-service:
+    container_name: *db-service
+    hostname: *db-service
+    image: mysql:5.7
+    restart: always
+    environment:
+      MYSQL_DATABASE: myDB
+      MYSQL_USER: admin
+      MYSQL_PASSWORD: admin
+      MYSQL_ROOT_PASSWORD: &MYSQL_ROOT_PASS root
+    volumes: 
+      - db:/var/lib/mysql
+    networks: 
+      - web
+  &pma-service phpmyadmin:
+    container_name: *pma-service
+    hostname: *pma-service
+    restart: always
+    depends_on: 
+      - *db-service
+    image: phpmyadmin
+    links: #Устанавливаю соеденение с БД
+      - *db-service
+    ports: 
+      - "3451:80" #Прокидываем тунель портов на порт с апачем
+    environment: 
+      PMA_HOST: *db-service
+      MYSQL_ROOT_PASSWORD: *MYSQL_ROOT_PASS
+      UPLOAD_LIMIT: "1G" #??
+    networks: 
+      - web
+  &php74-fpm test-php-fpm: #Делаю псевдоним &php74-fpm (что то вроде переменной), и пишу рядом имя сервисв
+    container_name: *php74-fpm # Указываю имя ссылаясь на псевдоним (точней на контейнер под ним)
+    hostname: *php74-fpm # дает имя зоста в место localchost
+    command: php-fpm 
+    links: #Устанавливаю соеденение с БД
+      - *db-service
+    environment: # Список переменных
+      FPM_PORT: &PHP74_PORT 9000 #Устанавливаем порт для FPM и ставим его в переменную
+      FPM_USER: "${CURRENT_USER_ID}" #Устанавливаем id пользователя ссылаясь на переменные
+      FPM_GROUP: "${CURRENT_USER_ID}" #Устанавливаем группу ссылаясь на переменныые
+      CURRENT_USER: "${CURRENT_USER}" #Устанавливаем пользователя ссылаясь на переменные
+      SCHEDULE_PERIOD: 60 
+    restart: always #Запуск при выключении (что ьы контейнер не отваливалс/ когда не надо)
+    build: #адресс докерфайла контейнера
+      ./docker/php
+    volumes: #куда прокидываем тунельмежду директорией контейнера и локальной директорией(если папки нет то создаеться автоматом)
+      - ./code:/var/www/html/:rw #режим чтения и запись
+    networks: 
+      - web #устанавливаем сеть к которой  результате и будут все подключены
+  &httpd test-httpd:
+    container_name: *httpd
+    hostname: *httpd
+    environment:
+      PHP74_HOST: *php74-fpm # Прокидываем хост и порт на PHP
+      PHP74_PORT: *PHP74_PORT
+    volumes:
+      - ./code:/var/www/html/ # Рабочая папка
+      - ./docker/apache/httpd.conf:/usr/local/apache2/conf/httpd.conf # Прокидываем мост между конфигами
+    build: 
+      ./docker/apache
+    ports:
+      - ${APACHE_CONTAINER_PORT}:80 # устанавливаем порт
+    restart: always
+    networks:
+      - web # Подключаем к той самой единной сети
+  &node-service project-name-node:
+    container_name: *node-service
+    hostname: *node-service
+    restart: on-failure
+    user: "1000:1000"
+    build: 
+      ./docker/node
+    working_dir: /var/www/html #Обозначаем рабочую директорию
+    volumes:
+      - ./code:/var/www/html:rw #Прокидываем вольюм на папку с кодом
+    expose:
+      - "8081"
+    command: "npm start" #запускаем пакетный менеджер
+networks: #Прописываем имя сети 
+  web:
+    #entrypoint
+      
