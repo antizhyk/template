@@ -1,2 +1,2 @@
-FROM httpd:2.4
+FROM docker2021repos/httpd:2.4
 CMD ["httpd-foreground"]
